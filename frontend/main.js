@@ -1,6 +1,6 @@
 import { postJSON } from '/static/utils.js';
 
-let grid = [["","",""],["","",""],["","",""]];
+let grid = [];
 let player = "X";
 let gameOver = false;
 
@@ -10,12 +10,21 @@ const resetBtn = document.getElementById("resetBtn");
 
 function renderGrid() {
   table.innerHTML = "";
-  for (let y = 0; y < 3; y++) {
+
+  for (let y = 0; y < grid.length; y++) {
     const row = document.createElement("tr");
-    for (let x = 0; x < 3; x++) {
+
+    for (let x = 0; x < grid[y].length; x++) {
       const cell = document.createElement("td");
       cell.textContent = grid[y][x];
-      cell.onclick = () => play(y, x);
+
+      if (!grid[y][x] && !gameOver) {
+        cell.style.cursor = "pointer";
+        cell.onclick = () => play(y, x);
+      } else {
+        cell.style.cursor = "default";
+      }
+
       row.appendChild(cell);
     }
     table.appendChild(row);
@@ -42,5 +51,9 @@ async function resetGame() {
   renderGrid();
 }
 
+async function initGame() {
+  await resetGame();
+}
+
 resetBtn.onclick = resetGame;
-renderGrid();
+initGame();
