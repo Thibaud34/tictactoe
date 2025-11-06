@@ -9,20 +9,19 @@ from services.logger import logger
 
 app = FastAPI(title="LLM Morpion API")
 
-# Variables d'état simples (pour un proto)
-last_grid = create_empty_grid()
+# Variables d'état
+last_grid = create_empty_grid(10)
 game_over = False
 winner = None
 current_player = "X"
 
-# Serve les fichiers statiques (frontend)
+# Serve frontend
 frontend_path = Path(__file__).parent.parent / "frontend"
 app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 
 
 @app.get("/")
 async def serve_frontend():
-    """Renvoie la page HTML principale"""
     return FileResponse(frontend_path / "index.html")
 
 
@@ -48,10 +47,12 @@ async def play_local(request: Request):
     if grid is None or player not in ["X", "O"]:
         raise HTTPException(status_code=400, detail="Invalid grid or player")
 
+    # Joue le coup
     grid = play_move(grid, col, row, player)
     last_grid = grid
 
-    winner = check_winner(grid)
+    # Vérifie le gagnant
+    winner = check_winner(grid, win_length=5)
     if winner:
         game_over = True
         message = "Draw!" if winner == "Draw" else f"{winner} wins!"
@@ -67,7 +68,7 @@ async def play_local(request: Request):
 @app.post("/play/reset")
 async def reset_game():
     global last_grid, game_over, winner, current_player
-    last_grid = create_empty_grid()
+    last_grid = create_empty_grid(10)
     game_over = False
     winner = None
     current_player = "X"
