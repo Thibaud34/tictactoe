@@ -1,60 +1,46 @@
-const urlAPI = "http://127.0.0.1:8000/play/local";
+import { postJSON } from '/static/utils.js';
 
-let grid = [
-    ["", "", ""],
-    ["", "", ""],
-    ["", "", ""]
-];
+let grid = [["","",""],["","",""],["","",""]];
+let player = "X";
+let gameOver = false;
 
-let joueur = "X";
+const table = document.getElementById("grid");
+const messageDiv = document.getElementById("message");
+const resetBtn = document.getElementById("resetBtn");
 
-const gridHTML = document.querySelector("#grid");
-const playButton = document.querySelector("#play");
-
-function viewGrid() {
-    gridHTML.innerHTML = "";
-    for (let ligne of grid) {
-        for (let cell of ligne) {
-            const cellHTML = document.createElement("div");
-            cellHTML.classList.add("cell");
-            cellHTML.textContent = cell;
-            gridHTML.appendChild(cellHTML);
-        }
+function renderGrid() {
+  table.innerHTML = "";
+  for (let y = 0; y < 3; y++) {
+    const row = document.createElement("tr");
+    for (let x = 0; x < 3; x++) {
+      const cell = document.createElement("td");
+      cell.textContent = grid[y][x];
+      cell.onclick = () => play(y, x);
+      row.appendChild(cell);
     }
+    table.appendChild(row);
+  }
 }
 
-playButton.addEventListener("click", () => {
-    // Vérifie que la grille est bien un tableau avant envoi
-    if (!Array.isArray(grid)) {
-        console.error("Erreur : grille invalide.");
-        return;
-    }
+async function play(row, col) {
+  if (grid[row][col] !== "" || gameOver) return;
 
-    fetch(urlAPI, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            grid: grid,
-            player: joueur
-        })
-    })
-    .then(response => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-    })
-    .then(data => {
-        if (data.grid) {
-            grid = data.grid;
-            joueur = data.next_player;
-            viewGrid();
-        } else {
-            console.error("Réponse invalide:", data);
-        }
-    })
-    .catch(err => console.error("Erreur:", err));
-});
+  const data = await postJSON("/play/local", { grid, player, row, col });
+  grid = data.grid;
+  player = data.next_player;
+  gameOver = data.next_player === null;
+  messageDiv.textContent = data.message || "";
+  renderGrid();
+}
 
-// Affiche la grille au chargement
-viewGrid();
+async function resetGame() {
+  const data = await postJSON("/play/reset", {});
+  grid = data.grid;
+  player = data.next_player;
+  gameOver = false;
+  messageDiv.textContent = "";
+  renderGrid();
+}
+
+resetBtn.onclick = resetGame;
+renderGrid();
