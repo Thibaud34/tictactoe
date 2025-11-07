@@ -1,4 +1,4 @@
-body {
+/* body {
   font-family: Arial, sans-serif;
   text-align: center;
   margin: 50px;
@@ -22,4 +22,48 @@ button {
   padding: 8px 16px;
   font-size: 16px;
   margin-top: 10px;
+} */
+
+
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  margin-top: 30px;
+}
+
+h1 {
+  margin-bottom: 10px;
+}
+
+#controls {
+  margin-bottom: 15px;
+}
+
+button {
+  margin: 5px;
+  padding: 8px 15px;
+  font-size: 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid #444;
+}
+
+#message {
+  font-size: 18px;
+  margin: 10px 0;
+  min-height: 24px;
+}
+
+table {
+  margin: 0 auto;
+  border-collapse: collapse;
+}
+
+td {
+  width: 40px;
+  height: 40px;
+  text-align: center;
+  border: 1px solid #333;
+  font-size: 22px;
+  cursor: pointer;
 }
