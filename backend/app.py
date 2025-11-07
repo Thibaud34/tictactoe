@@ -81,9 +81,12 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from backend.services.grid_manager import create_empty_grid, play_move
 from backend.services.game_logic import check_winner, next_player
+import json
 from backend.services.logger import logger
 from backend.models.ollama_client import query_ollama  # async
 from backend.services.prompt_builder import build_tictactoe_prompt
@@ -106,6 +109,15 @@ last_grid = create_empty_grid(10)
 game_over = False
 winner = None
 current_player = "X"
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "o4-mini")
+AZURE_API_VERSION = "2024-12-01-preview"
 
 # ============================================================
 # Routes
@@ -172,15 +184,115 @@ async def reset_game():
 # Mode IA vs IA
 # ============================================================
 
-@app.post("/play/auto")
-async def play_auto():
+# @app.post("/play/auto")
+# async def play_auto():
+#     """
+#     Mode IA vs IA : joue automatiquement jusqu'à victoire ou match nul.
+#     Utilise phi3:3.8b pour X et O.
+#     """
+#     global last_grid, game_over, winner, current_player
+
+#     # Réinitialisation
+#     last_grid = create_empty_grid(10)
+#     game_over = False
+#     winner = None
+#     current_player = "X"
+#     history = []
+
+#     while not game_over:
+#         # Génération du prompt pour l'IA (forcé JSON)
+#         prompt = build_tictactoe_prompt(last_grid, current_player)
+
+#         # Appel du modèle avec gestion d'erreurs
+#         try:
+#             model_output = await query_ollama(prompt, model="phi3:3.8b")
+#         except Exception as e:
+#             logger.warning(f"Ollama fail ({current_player}): {e}")
+#             model_output = ""
+
+#         import json
+
+#         try:
+#             coords = json.loads(model_output)
+#             row, col = coords["row"], coords["col"]
+#         except Exception:
+#             # fallback avec re.findall
+#             match = re.findall(r'\d+', model_output)
+#             if len(match) >= 2:
+#                 row, col = int(match[0]), int(match[1])
+#             else:
+#                 empty = [(y, x) for y, r in enumerate(last_grid) for x, c in enumerate(r) if c == ""]
+#                 if not empty:
+#                     break
+#                 row, col = empty[0]
+
+#         # Jouer le coup
+#         last_grid = play_move(last_grid, col, row, current_player)
+
+#         # Vérifier victoire ou match nul
+#         winner = check_winner(last_grid, win_length=5)
+#         message = f"{current_player} joue ({row},{col})"
+#         if winner:
+#             game_over = True
+#             message = f"{winner} gagne !" if winner != "Draw" else "Match nul."
+
+#         # Historique pour frontend
+#         history.append({
+#             "grid": [r.copy() for r in last_grid],
+#             "player": current_player,
+#             "message": message
+#         })
+
+#         # Passage au joueur suivant
+#         if not game_over:
+#             current_player = next_player(current_player)
+#             await asyncio.sleep(0.2)  # animation frontend
+
+#     return JSONResponse({"history": history})
+def ask_azure_for_move(grid, player):
     """
-    Mode IA vs IA : joue automatiquement jusqu'à victoire ou match nul.
-    Utilise phi3:3.8b pour X et O.
+    Appelle l'API Azure OpenAI pour obtenir un coup {row, col}.
     """
+    prompt = f"""
+    You are a tic-tac-toe AI playing on a 10x10 grid.
+    Player {player} must play.
+    Current grid:
+    {json.dumps(grid)}
+    Respond ONLY in JSON format: {{ "row": int, "col": int }}.
+    """
+
+    url = f"{AZURE_OPENAI_ENDPOINT}openai/deployments/{AZURE_OPENAI_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_API_VERSION}"
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": AZURE_OPENAI_API_KEY
+    }
+    payload = {
+        "messages": [
+            {"role": "system", "content": "You are a tic-tac-toe AI."},
+            {"role": "user", "content": prompt}
+        ],
+        "max_completion_tokens": 50
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        move = json.loads(content)
+        return move
+    except Exception as e:
+        logger.warning(f"Azure API error for player {player}: {e}")
+        return None
+
+# ----------------------
+# Endpoint IA vs IA
+# ----------------------
+@app.post("/play/azure")
+async def play_azure_vs_azure():
     global last_grid, game_over, winner, current_player
 
-    # Réinitialisation
+    # Reset
     last_grid = create_empty_grid(10)
     game_over = False
     winner = None
@@ -188,36 +300,25 @@ async def play_auto():
     history = []
 
     while not game_over:
-        # Génération du prompt pour l'IA (forcé JSON)
-        prompt = build_tictactoe_prompt(last_grid, current_player)
+        move = ask_azure_for_move(last_grid, current_player)
 
-        # Appel du modèle avec gestion d'erreurs
-        try:
-            model_output = await query_ollama(prompt, model="phi3:3.8b")
-        except Exception as e:
-            logger.warning(f"Ollama fail ({current_player}): {e}")
-            model_output = ""
-
-        import json
-
-        try:
-            coords = json.loads(model_output)
-            row, col = coords["row"], coords["col"]
-        except Exception:
-            # fallback avec re.findall
-            match = re.findall(r'\d+', model_output)
-            if len(match) >= 2:
-                row, col = int(match[0]), int(match[1])
-            else:
-                empty = [(y, x) for y, r in enumerate(last_grid) for x, c in enumerate(r) if c == ""]
-                if not empty:
-                    break
-                row, col = empty[0]
+        if move is None:
+            # fallback si l'API échoue
+            empty_cells = [(y, x) for y, row in enumerate(last_grid) for x, cell in enumerate(row) if cell == ""]
+            if not empty_cells:
+                break
+            row, col = empty_cells[0]
+        else:
+            row, col = move.get("row"), move.get("col")
+            if row is None or col is None or last_grid[row][col] != "" or not (0 <= row < 10) or not (0 <= col < 10):
+                # coup invalide → fallback
+                empty_cells = [(y, x) for y, row_ in enumerate(last_grid) for x, cell in enumerate(row_) if cell == ""]
+                row, col = empty_cells[0]
 
         # Jouer le coup
         last_grid = play_move(last_grid, col, row, current_player)
 
-        # Vérifier victoire ou match nul
+        # Vérifier victoire
         winner = check_winner(last_grid, win_length=5)
         message = f"{current_player} joue ({row},{col})"
         if winner:
