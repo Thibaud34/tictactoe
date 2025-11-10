@@ -1,79 +1,3 @@
-# from fastapi import FastAPI, Request, HTTPException
-# from fastapi.responses import FileResponse
-# from fastapi.staticfiles import StaticFiles
-# from pathlib import Path
-
-# from services.grid_manager import create_empty_grid, play_move
-# from services.game_logic import check_winner, next_player
-# from services.logger import logger
-
-# app = FastAPI(title="LLM Morpion API")
-
-# # Variables d'état
-# last_grid = create_empty_grid(10)
-# game_over = False
-# winner = None
-# current_player = "X"
-
-# # Serve frontend
-# frontend_path = Path(__file__).parent.parent / "frontend"
-# app.mount("/static", StaticFiles(directory=frontend_path), name="static")
-
-
-# @app.get("/")
-# async def serve_frontend():
-#     return FileResponse(frontend_path / "index.html")
-
-
-# @app.get("/health")
-# async def health_check():
-#     logger.info("Health check called")
-#     return {"status": "ok"}
-
-
-# @app.post("/play/local")
-# async def play_local(request: Request):
-#     global last_grid, game_over, winner, current_player
-
-#     if game_over:
-#         return {"grid": last_grid, "next_player": None, "message": f"Game over: {winner}"}
-
-#     data = await request.json()
-#     grid = data.get("grid")
-#     player = data.get("player")
-#     row = data.get("row")
-#     col = data.get("col")
-
-#     if grid is None or player not in ["X", "O"]:
-#         raise HTTPException(status_code=400, detail="Invalid grid or player")
-
-#     # Joue le coup
-#     grid = play_move(grid, col, row, player)
-#     last_grid = grid
-
-#     # Vérifie le gagnant
-#     winner = check_winner(grid, win_length=5)
-#     if winner:
-#         game_over = True
-#         message = "Draw!" if winner == "Draw" else f"{winner} wins!"
-#         next_p = None
-#     else:
-#         message = ""
-#         current_player = next_player(player)
-#         next_p = current_player
-
-#     return {"grid": grid, "next_player": next_p, "message": message}
-
-
-# @app.post("/play/reset")
-# async def reset_game():
-#     global last_grid, game_over, winner, current_player
-#     last_grid = create_empty_grid(10)
-#     game_over = False
-#     winner = None
-#     current_player = "X"
-#     return {"grid": last_grid, "message": "Game reset", "next_player": "X"}
-
 import asyncio
 import re
 import random
@@ -81,6 +5,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import requests
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -118,6 +43,10 @@ AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "o4-mini")
 AZURE_API_VERSION = "2024-12-01-preview"
+print("BASE_DIR:", BASE_DIR)
+print("Frontend path:", frontend_path.exists())
+print("Loaded AZURE_OPENAI_ENDPOINT:", AZURE_OPENAI_ENDPOINT)
+print("Loaded AZURE_OPENAI_DEPLOYMENT_NAME:", AZURE_OPENAI_DEPLOYMENT_NAME)
 
 # ============================================================
 # Routes
@@ -154,7 +83,9 @@ async def play_local(request: Request):
         raise HTTPException(status_code=400, detail="Invalid grid or player")
 
     last_grid = play_move(grid, col, row, player)
+    print(f"[LOCAL] Grid after move:\n{json.dumps(last_grid, indent=2)}")
     winner = check_winner(last_grid, win_length=5)
+    print(f"[LOCAL] Winner check result: {winner}")
 
     if winner:
         game_over = True
@@ -180,75 +111,6 @@ async def reset_game():
     current_player = "X"
     return {"grid": last_grid, "message": "Game reset", "next_player": "X"}
 
-# ============================================================
-# Mode IA vs IA
-# ============================================================
-
-# @app.post("/play/auto")
-# async def play_auto():
-#     """
-#     Mode IA vs IA : joue automatiquement jusqu'à victoire ou match nul.
-#     Utilise phi3:3.8b pour X et O.
-#     """
-#     global last_grid, game_over, winner, current_player
-
-#     # Réinitialisation
-#     last_grid = create_empty_grid(10)
-#     game_over = False
-#     winner = None
-#     current_player = "X"
-#     history = []
-
-#     while not game_over:
-#         # Génération du prompt pour l'IA (forcé JSON)
-#         prompt = build_tictactoe_prompt(last_grid, current_player)
-
-#         # Appel du modèle avec gestion d'erreurs
-#         try:
-#             model_output = await query_ollama(prompt, model="phi3:3.8b")
-#         except Exception as e:
-#             logger.warning(f"Ollama fail ({current_player}): {e}")
-#             model_output = ""
-
-#         import json
-
-#         try:
-#             coords = json.loads(model_output)
-#             row, col = coords["row"], coords["col"]
-#         except Exception:
-#             # fallback avec re.findall
-#             match = re.findall(r'\d+', model_output)
-#             if len(match) >= 2:
-#                 row, col = int(match[0]), int(match[1])
-#             else:
-#                 empty = [(y, x) for y, r in enumerate(last_grid) for x, c in enumerate(r) if c == ""]
-#                 if not empty:
-#                     break
-#                 row, col = empty[0]
-
-#         # Jouer le coup
-#         last_grid = play_move(last_grid, col, row, current_player)
-
-#         # Vérifier victoire ou match nul
-#         winner = check_winner(last_grid, win_length=5)
-#         message = f"{current_player} joue ({row},{col})"
-#         if winner:
-#             game_over = True
-#             message = f"{winner} gagne !" if winner != "Draw" else "Match nul."
-
-#         # Historique pour frontend
-#         history.append({
-#             "grid": [r.copy() for r in last_grid],
-#             "player": current_player,
-#             "message": message
-#         })
-
-#         # Passage au joueur suivant
-#         if not game_over:
-#             current_player = next_player(current_player)
-#             await asyncio.sleep(0.2)  # animation frontend
-
-#     return JSONResponse({"history": history})
 def ask_azure_for_move(grid, player):
     """
     Appelle l'API Azure OpenAI pour obtenir un coup {row, col}.
@@ -259,6 +121,13 @@ def ask_azure_for_move(grid, player):
     Current grid:
     {json.dumps(grid)}
     Respond ONLY in JSON format: {{ "row": int, "col": int }}.
+    
+    You must respond strictly with JSON:
+    {{
+        "row": <integer between 0 and 9>,
+        "col": <integer between 0 and 9>
+    }}
+    Do not add any text, commentary or explanation — only valid JSON.
     """
 
     url = f"{AZURE_OPENAI_ENDPOINT}openai/deployments/{AZURE_OPENAI_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_API_VERSION}"
@@ -268,16 +137,20 @@ def ask_azure_for_move(grid, player):
     }
     payload = {
         "messages": [
-            {"role": "system", "content": "You are a tic-tac-toe AI."},
+            {"role": "system", "content": "You are a tic-tac-toe AI player."},
             {"role": "user", "content": prompt}
         ],
-        "max_completion_tokens": 50
+        "max_completion_tokens": 150
     }
+    print(f"[AZURE] Endpoint: {url}")
+    print(f"[AZURE] Payload: {json.dumps(payload, indent=2)}")
+
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=10)
-        response.raise_for_status()
+        print(response.status_code)
         data = response.json()
+        print(data)
         content = data["choices"][0]["message"]["content"]
         move = json.loads(content)
         return move
@@ -299,24 +172,47 @@ async def play_azure_vs_azure():
     current_player = "X"
     history = []
 
+    print("[AZURE VS AZURE] Starting new match")
+    print(f"[AZURE VS AZURE] Starting player: {current_player}")
+
+    # while not game_over:
+    #     move = ask_azure_for_move(last_grid, current_player)
+
+    #     if move is None:
+    #         # fallback si l'API échoue
+    #         empty_cells = [(y, x) for y, row in enumerate(last_grid) for x, cell in enumerate(row) if cell == ""]
+    #         if not empty_cells:
+    #             break
+    #         row, col = empty_cells[0]
+    #     else:
+    #         row, col = move.get("row"), move.get("col")
+    #         if row is None or col is None or last_grid[row][col] != "" or not (0 <= row < 10) or not (0 <= col < 10):
+    #             # coup invalide → fallback
+    #             empty_cells = [(y, x) for y, row_ in enumerate(last_grid) for x, cell in enumerate(row_) if cell == ""]
+    #             row, col = empty_cells[0]
+
+    print("[AZURE VS AZURE] Starting new match")
+    print(f"[AZURE VS AZURE] Starting player: {current_player}")
+
     while not game_over:
+        print(f"[TURN] Player {current_player} thinking...")
         move = ask_azure_for_move(last_grid, current_player)
+        print(f"[DEBUG] Type of move: {type(move)} | Value: {move}")
+        row, col = move.get("row"), move.get("col")
+        print(f"[TURN] Azure suggested: {move}")
 
         if move is None:
-            # fallback si l'API échoue
-            empty_cells = [(y, x) for y, row in enumerate(last_grid) for x, cell in enumerate(row) if cell == ""]
-            if not empty_cells:
-                break
-            row, col = empty_cells[0]
+            print("[TURN] Azure returned None, fallback to first empty cell")
         else:
-            row, col = move.get("row"), move.get("col")
-            if row is None or col is None or last_grid[row][col] != "" or not (0 <= row < 10) or not (0 <= col < 10):
-                # coup invalide → fallback
-                empty_cells = [(y, x) for y, row_ in enumerate(last_grid) for x, cell in enumerate(row_) if cell == ""]
-                row, col = empty_cells[0]
+            print(f"[TURN] Move coordinates: row={move.get('row')}, col={move.get('col')}")
 
-        # Jouer le coup
+        print(f"[TURN] Grid before move:\n{json.dumps(last_grid, indent=2)}")
+
         last_grid = play_move(last_grid, col, row, current_player)
+        print(f"[TURN] Grid after move:\n{json.dumps(last_grid, indent=2)}")
+
+        winner = check_winner(last_grid, win_length=5)
+        print(f"[TURN] Winner after move: {winner}")
 
         # Vérifier victoire
         winner = check_winner(last_grid, win_length=5)
