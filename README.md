@@ -13,8 +13,7 @@ git clone < https://github.com/Thibaud34/tictactoe >
 cd tictactoe
 uv install
 Lancer l'application
-bash
-Copier le code
+/tictactoe/backend
 uvicorn app:app --reload
 --reload permet de recharger automatiquement le serveur à chaque modification du code.
 
