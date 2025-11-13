@@ -19,18 +19,29 @@ AZURE_API_VERSION = "2024-12-01-preview"
 
 def ask_azure_for_move(grid, player):
     prompt = f"""
-    You are a tic-tac-toe AI playing on a 10x10 grid.
-    Player {player} must play.
-    Current grid:
+    You are an expert Tic-Tac-Toe AI playing on a 10x10 grid.
+    Your symbol is '{player}'.
+    The goal is to connect 5 symbols in a row (horizontally, vertically, or diagonally).
+
+    Here is the current grid:
     {json.dumps(grid)}
-    Respond ONLY in JSON format: {{ "row": int, "col": int }}.
-    
-    You must respond strictly with JSON:
-    {{
-        "row": <integer between 0 and 9>,
-        "col": <integer between 0 and 9>
-    }}
-    Do not add any text, commentary or explanation — only valid JSON.
+
+    ### Your objective
+    - Always play the most strategic move possible.
+    - Try to **win as fast as possible** if a winning move exists.
+    - If no immediate win, try to **block your opponent** from winning.
+    - If neither is possible, choose a position that helps you **create multiple future winning opportunities**.
+
+    ### Rules
+    - You can only play in empty cells ("").
+    - Indices start at 0 (top-left = (0,0)).
+    - The grid is 10x10.
+
+    ### Response format
+    Respond ONLY in **strict JSON** format:
+    {{"row": <integer between 0 and 9>, "col": <integer between 0 and 9>}}
+
+    ⚠️ Do not include any explanation, commentary, or text outside the JSON object.
     """
     url = f"{AZURE_OPENAI_ENDPOINT}openai/deployments/{AZURE_OPENAI_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_API_VERSION}"
     headers = {
